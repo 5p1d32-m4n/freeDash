@@ -1,0 +1,18 @@
+{
+  "name": "free-dash-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "description": "A monorepo for the financial dashboard project.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "start:client": "npm start --workspace=@free-dash/client",
+    "dev:api": "npm run dev --workspace=@free-dash/api",
+    "build:client": "npm run build --workspace=@free-dash/client",
+    "build:api": "npm run build --workspace=@free-dash/api",
+    "build:shared": "npm run build --workspace=@free-dash/shared-types"
+  },
+  "author": "",
+  "license": "ISC"
+}
