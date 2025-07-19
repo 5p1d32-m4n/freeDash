@@ -14,5 +14,8 @@
     "build:shared": "npm run build --workspace=@free-dash/shared-types"
   },
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "prisma": "^6.12.0"
+  }
 }
