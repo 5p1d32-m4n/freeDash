@@ -13,3 +13,99 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+// Enum for your allowed string values
+enum OnboardingStatus {
+  incomplete
+  complete
+}
+
+enum TransactionStatus {
+  pending
+  posted
+}
+
+enum TransactionType {
+  income
+  expense
+  transfer
+}
+
+enum AccountType {
+  checking
+  savings
+  credit
+}
+
+// Schemas
+
+model User {
+  // IUser interface
+  id               String           @id @default(uuid()) // unique ID for each user
+  auth0Id          String           @unique // The ID from Auth0
+  email            String           @unique // The email
+  name             String? // The name of the user
+  onboardingStatus OnboardingStatus @default(incomplete)
+  defaultCurrency  String
+  timezone         String
+
+  // --- RELATIONSHIPS ---
+  // A User can have many preferences, accounts, and transactions
+  preferences  UserPreferences? // A one-to-one relationship
+  accounts     Account[]
+  transactions Transaction[]
+}
+
+model UserPreferences {
+  // Fields from IUserPreferences interface
+  id            String  @id @default(uuid()) // unique ID for each user
+  weeklyReport  Boolean @default(false)
+  taxRate       Float? // Use Float for decimal numbers
+  businessHours Int[] // A list of integers, e.g., [9, 17]
+
+  // --- RELATIONSHIPS ---
+  // This creates the other side of the one-to-one link with User
+  user   User   @relation(fields: [userId], references: [id])
+  userId String @unique // This foreign key should be unique
+}
+
+model Account {
+  id             String      @id @default(uuid())
+  plaidItemId    String // The ID for the bank connection
+  plaidAccountId String      @unique // The ID for this specific account from Plaid
+  name           String
+  officialName   String?
+  type           AccountType
+  balance        Float
+  lastSynced     DateTime
+
+  // --- RELATIONSHIPS ---
+  // A user can have many accounts
+  User   User?   @relation(fields: [userId], references: [id])
+  userId String?
+
+  // An account can have many Transactions
+  transactions Transaction[]
+}
+
+model Transaction {
+  id                 String            @id @default(uuid())
+  plaidTransactionId String // The ID for this specific transaction from Plaid
+  amount             Float
+  currency           String
+  date               DateTime
+  merchant           String?
+  plaidCategory      String[]
+  customCategory     String?
+  status             TransactionStatus
+  type               TransactionType
+
+  // --- RELATIONSHIPS ---
+  // A transaction belongs to one User and one Account
+  User   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  // An account can have many Transactions
+  Account   Account @relation(fields: [accountId], references: [id])
+  accountId String
+}
