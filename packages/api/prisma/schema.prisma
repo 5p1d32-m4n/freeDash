@@ -11,7 +11,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url      = env("PGDATABASE_URL")
 }
 
 // Enum for your allowed string values
@@ -42,7 +42,7 @@ enum AccountType {
 model User {
   // IUser interface
   id               String           @id @default(uuid()) // unique ID for each user
-  auth0Id          String           @unique // The ID from Auth0
+  passwordHash     String           
   email            String           @unique // The email
   name             String? // The name of the user
   onboardingStatus OnboardingStatus @default(incomplete)
