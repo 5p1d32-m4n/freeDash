@@ -37,46 +37,48 @@ export const syncUser: RequestHandler = async (req, res) => {
             if (!passwordValid) {
                 return res.status(401).json({ error: 'Invalid credentials' });
             }
+
+            // If login is successful, generate token and send response immediately
+            const token = jwt.sign(
+                { userId: existingUser.id, onboardingStatus: existingUser.onboardingStatus },
+                JWT_SECRET,
+                { expiresIn: '1h' }
+            );
+
+            const { passwordHash, ...safeUser } = existingUser;
+            return res.json({
+                user: safeUser,
+                token,
+                isNewUser: false
+            });
         }
 
-
-        // Create new user with preferences if needed:
-        const user = existingUser || await prisma.user.create({
+        // Signup Flow: If we've reached this point, the user does not exist.
+        const newUser = await prisma.user.create({
             data: {
                 email,
                 passwordHash: await bcrypt.hash(password, SALT_ROUNDS),
                 name,
                 timezone,
                 defaultCurrency,
-                onboardingStatus: 'incomplete',
-                preferences: {
-                    create: {
-                        weeklyReport: false,
-                        businessHours: [9, 17]
-                    }
-                }
+                onboardingStatus: 'incomplete'
             },
             include: { preferences: true }
         });
 
         // Generate JWT token
         const token = jwt.sign(
-            {
-                userId: user.id,
-                onboardingStatus: user.onboardingStatus
-            },
+            { userId: newUser.id, onboardingStatus: newUser.onboardingStatus },
             JWT_SECRET,
-            {
-                expiresIn: '1h'
-            }
+            { expiresIn: '1h' }
         );
 
         //Return safe user data
-        const { passwordHash, ...safeUser } = user;
+        const { passwordHash, ...safeUser } = newUser;
         res.json({
             user: safeUser,
             token,
-            isNewUser: !existingUser
+            isNewUser: true
         });
 
     }
