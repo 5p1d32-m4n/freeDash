@@ -46,8 +46,8 @@ model User {
   email            String           @unique // The email
   name             String? // The name of the user
   onboardingStatus OnboardingStatus @default(incomplete)
-  defaultCurrency  String
-  timezone         String
+  defaultCurrency  String?
+  timezone         String?
 
   // --- RELATIONSHIPS ---
   // A User can have many preferences, accounts, and transactions
