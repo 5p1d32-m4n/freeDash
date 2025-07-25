@@ -19,7 +19,7 @@ interface SafeUser{
     preferences: UserPreferences | null;
 }
 
-interface ApiReponse{
+interface ApiResponse{
     user: SafeUser;
     token: string;
     isNewUser: boolean;
@@ -29,8 +29,19 @@ function AuthPage(){
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [name, setName] = useState('');
-    const [response, setResponse] = useState<ApiReponse | null>(null);
+    const [isLoginMode, setIsLoginMode] = useState(true);
+    const [response, setResponse] = useState<ApiResponse | null>(null);
     const [error, setError] = useState('');
+
+    const toggleMode = () => {
+        setIsLoginMode(prevMode => !prevMode);
+        //Reset fields and errors on mode change.
+        setEmail('');
+        setPassword('');
+        setName('');
+        setError('');
+        setResponse(null);
+    }
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -55,7 +66,7 @@ function AuthPage(){
                 throw new Error(data.error);
             }
 
-            setResponse(data as ApiReponse);
+            setResponse(data as ApiResponse);
         } catch (err:any) {
             setError(err.message);
             console.error('Sync error: ', err);
@@ -63,7 +74,7 @@ function AuthPage(){
     }
     return(
         <div>
-            <h2>Register or Login</h2>
+            <h2>{isLoginMode ? 'Login': 'Register'}</h2>
             <form onSubmit={handleSubmit}>
                 <div>
                     <label htmlFor="">Name (optional, for new users):</label>
@@ -72,6 +83,10 @@ function AuthPage(){
                 <div>
                     <label htmlFor="">Email:</label>
                     <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                </div>
+                <div>
+                    <label >Password:</label>
+                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
                 </div>
                 <button type="submit">Sync User (Login/Register)</button>
             </form>
