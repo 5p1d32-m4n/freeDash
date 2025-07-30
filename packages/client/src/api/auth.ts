@@ -6,7 +6,7 @@ export const useAuthenticatedClient = () => {
     const { getAccessTokenSilently } = useAuth0();
 
     const client = axios.create({
-        baseURL: process.env.API_RUL,
+        baseURL: process.env.REACT_APP_API_URL, // Corrected typo and used standard CRA prefix
     });
 
     client.interceptors.request.use(async (config) => {

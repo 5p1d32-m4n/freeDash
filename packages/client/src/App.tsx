@@ -1,14 +1,18 @@
+import React from 'react';
+import { Route, Routes } from 'react-router-dom';
 import AuthPage from './pages/Auth/AuthPage';
-import './App.css';
+import HomeDashboard from './pages/Dashboard/HomeDashboard';
+import AuthRoute from './routes/AuthRoute';
 
-
-function App() {
+const App = () => {
   return (
-      <div className='container'>
-      <h1>freeDash Client</h1>
-      <AuthPage />
-      </div>
+    <Routes>
+      {/* Public route for the login page */}
+      <Route path="/" element={<AuthPage />} />
+      {/* Protected route for the main dashboard */}
+      <Route path="/dashboard" element={<AuthRoute component={HomeDashboard} />} />
+    </Routes>
   );
-}
+};
 
 export default App;
