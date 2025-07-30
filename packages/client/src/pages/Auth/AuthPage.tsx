@@ -1,3 +1,4 @@
+import { useAuth0 } from "@auth0/auth0-react";
 import React, {useState} from "react";
 
 interface UserPreferences{
@@ -26,81 +27,20 @@ interface ApiResponse{
 }
 
 function AuthPage(){
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [name, setName] = useState('');
-    const [isLoginMode, setIsLoginMode] = useState(true);
-    const [response, setResponse] = useState<ApiResponse | null>(null);
-    const [error, setError] = useState('');
+    const {loginWithRedirect, logout, isAuthenticated, user} = useAuth0();
 
-    const toggleMode = () => {
-        setIsLoginMode(prevMode => !prevMode);
-        //Reset fields and errors on mode change.
-        setEmail('');
-        setPassword('');
-        setName('');
-        setError('');
-        setResponse(null);
-    }
 
-    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        setError('');
-        setResponse(null);
-
-        // Replace this with ngrok url
-        const API_URL = ``;
-
-        try {
-            const res = await fetch(API_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type':'application/json', 
-                },
-                body: JSON.stringify({email, password, name: name || undefined}),
-            });
-
-            const data = await res.json();
-
-            if(!res.ok){
-                throw new Error(data.error);
-            }
-
-            setResponse(data as ApiResponse);
-        } catch (err:any) {
-            setError(err.message);
-            console.error('Sync error: ', err);
-        }
-    }
     return(
         <div>
-            <h2>{isLoginMode ? 'Login': 'Register'}</h2>
-            <form onSubmit={handleSubmit}>
+            <h2>Authentication</h2>
+            {!isAuthenticated ? (
+                <button onClick={() => loginWithRedirect()}>Login</button>
+            ):(
                 <div>
-                    <label htmlFor="">Name (optional, for new users):</label>
-                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
-                </div>
-                <div>
-                    <label htmlFor="">Email:</label>
-                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-                </div>
-                <div>
-                    <label >Password:</label>
-                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-                </div>
-                <button type="submit">Sync User (Login/Register)</button>
-            </form>
-
-            {error && <p style={{ color: 'red'}}>Error: {error}</p>}
-
-            {response && (
-                <div>
-                    <h3>Success!</h3>
-                    <p>{response.isNewUser ? 'New user created.': 'Logged in successfully.'}</p>
-                    <h4>User Infor:</h4>
-                    <pre>{JSON.stringify(response.user, null, 2)}</pre>
-                    <h4>JWT Token:</h4>
-                    <pre style={{wordWrap: 'break-word'}}>{response.token}</pre>
+                    <h3>Welcome, {user?.name}!</h3>
+                    <button
+                        onClick={() => logout({logoutParams: {returnTo: window.location.origin}})}
+                    >Logout</button>
                 </div>
             )}
         </div>
