@@ -11,7 +11,8 @@
     "dev:api": "npm run dev --workspace=@free-dash/api",
     "build:client": "npm run build --workspace=@free-dash/client",
     "build:api": "npm run build --workspace=@free-dash/api",
-    "build:shared": "npm run build --workspace=@free-dash/shared-types"
+    "build:shared": "npm run build --workspace=@free-dash/shared-types",
+    "migrate:dev": "npm run migrate:dev --workspace=@free-dash/api"
   },
   "author": "",
   "license": "ISC",
