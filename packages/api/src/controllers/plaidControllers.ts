@@ -1,5 +1,5 @@
 import { RequestHandler } from "express";
-import { Configuration, PlaidApi, PlaidEnvironments, Products, CountryCode, Transaction } from "plaid";
+import { Configuration, PlaidApi, PlaidEnvironments, Products, CountryCode, Transaction as PlaidTransaction } from "plaid";
 import { PrismaClient, TransactionType, AccountType, TransactionStatus } from "../generated/prisma";
 import { auth } from 'express-oauth2-jwt-bearer';
 
