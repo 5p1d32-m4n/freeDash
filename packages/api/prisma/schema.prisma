@@ -54,6 +54,7 @@ model User {
   preferences  UserPreferences? // A one-to-one relationship
   accounts     Account[]
   transactions Transaction[]
+  plaidItems PlaidItem[]
 }
 
 model UserPreferences {
@@ -81,8 +82,11 @@ model Account {
 
   // --- RELATIONSHIPS ---
   // A user can have many accounts
-  User   User?   @relation(fields: [userId], references: [id])
+  User   User   @relation(fields: [userId], references: [id])
   userId String
+
+  // An Account is required to belong to a Plaid Item.
+  plaidItem PlaidItem @relation(fields: [plaidItemId], references: [id])
 
   // An account can have many Transactions
   transactions Transaction[]
@@ -90,12 +94,12 @@ model Account {
 
 model Transaction {
   id                 String            @id @default(uuid())
-  plaidTransactionId String // The ID for this specific transaction from Plaid
+  plaidTransactionId String @unique// The ID for this specific transaction from Plaid
   amount             Float
   currency           String
   date               DateTime
   merchant           String?
-  plaidCategory      String[]
+  plaidCategory      String?
   customCategory     String?
   status             TransactionStatus
   type               TransactionType
@@ -108,4 +112,15 @@ model Transaction {
   // An account can have many Transactions
   Account   Account @relation(fields: [accountId], references: [id])
   accountId String
+}
+
+model PlaidItem {
+  id String @id @default(uuid()) 
+  plaidItemId String  @unique // Unique Id for plaid - bank connection
+  accessToken String @unique // The secure, permanent token to make API calls to Plaid
+  user User @relation(fields: [userId], references: [id])
+  userId String
+  createdAt DateTime @default(now()) // Optional store date tiem.
+  accounts Account[]
+
 }
