@@ -1,4 +1,4 @@
-import {Request, Response, NextFunction } from 'express';
+import {Request, Response, NextFunction, RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
 import { PrismaClient, OnboardingStatus } from '../generated/prisma';
 
@@ -94,3 +94,9 @@ export const requireOnboardingComplete = (
   }
   next();
 };
+
+export const jwtCheck = async(req: Request, res:Response) => {
+
+}
+
+export const checkPermissions = async(req: Request, res: Response)=>{}
