@@ -145,7 +145,7 @@ export const exchangePublicToken: RequestHandler = async (req, res) => {
                     }
                 });
 
-                const transactions = transactionResponse.data.transactions;
+                const transactions: PlaidTransaction[] = transactionResponse.data.transactions;
                 for(const transaction of transactions){
                     await tx.transaction.upsert({
                         where: {plaidTransactionId: transaction.transaction_id},
@@ -205,7 +205,7 @@ export const getPlaidTransactions: RequestHandler = async(req, res) =>{
                     start_date: '2024-01-01',
                     end_date: '2025-01-01',
         });
-        const transactions = transactionsResponse.data.transactions;
+        const transactions: PlaidTransaction[] = transactionsResponse.data.transactions;
         //create or update plaid transactions at this point
         await prisma.$transaction(async (tx) => {
             for(const transaction of transactions) {
