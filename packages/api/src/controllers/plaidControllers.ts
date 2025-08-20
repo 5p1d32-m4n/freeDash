@@ -1,20 +1,17 @@
 import { RequestHandler } from "express";
 import { Configuration, PlaidApi, PlaidEnvironments, Products, CountryCode, Transaction as PlaidTransaction } from "plaid";
 import { PrismaClient, TransactionType, AccountType, TransactionStatus } from "../generated/prisma";
-import { auth } from 'express-oauth2-jwt-bearer';
+import { jwtCheck, checkPermissions } from "../middleware/auth";
 
 // I need to import jwt for token checks and "checkPermissions(['write:accounts'])" - DONE
 // This is the setup for the auth middleware. You would then use `checkJwt` in your routes.
 // e.g. router.post('/link-token', checkJwt, createLinkToken);
-const checkJwt = auth({
-  audience: process.env.AUTH0_AUDIENCE!,
-  issuerBaseURL: process.env.AUTH0_ISSUER_BASE_URL!,});
 
 const prisma = new PrismaClient();
 const configuration = new Configuration({
     basePath: process.env.PLAID_ENV,
     baseOptions: {
-        headers:{
+        headers: {
             'PLAID_CLIENT_ID': process.env.PLAID_CLIENT_ID,
             'PLAID_SECRET': process.env.PLAID_SECRET,
             'Plaid-Version': '2020-09-14' // Current API version
@@ -28,7 +25,7 @@ const plaidClient = new PlaidApi(configuration);
  * Maps Plaid's string enums to your Prisma enums
  */
 const mapPlaidAccountType = (plaidType: string): AccountType | undefined => {
-    switch(plaidType) {
+    switch (plaidType) {
         case 'checking': return AccountType.checking;
         case 'savings': return AccountType.savings;
         case 'credit card': return AccountType.credit;
@@ -47,7 +44,7 @@ const mapPlaidTransactionType = (plaidCategories: string[]): TransactionType => 
 };
 
 const mapPlaidTransactionStatus = (plaidStatus: string): TransactionStatus | undefined => {
-    switch(plaidStatus) {
+    switch (plaidStatus) {
         case 'pending': return TransactionStatus.pending;
         case 'posted': return TransactionStatus.posted;
         default: return undefined;
@@ -64,7 +61,7 @@ export const createLinkToken: RequestHandler = async (req, res) => {
     try {
         const userAuth0Id = req.auth?.payload.sub;
         const response = await plaidClient.linkTokenCreate({
-            user: {client_user_id: userAuth0Id!},
+            user: { client_user_id: userAuth0Id! },
             client_name: 'FreeDash',
             products: [Products.Transactions],
             country_codes: [CountryCode.Us],
@@ -85,11 +82,11 @@ export const createLinkToken: RequestHandler = async (req, res) => {
  */
 export const exchangePublicToken: RequestHandler = async (req, res) => {
     try {
-        const {public_token} = req.body;
+        const { public_token } = req.body;
         const userAuth0Id = req.auth?.payload.sub;
 
-        if(!userAuth0Id){
-            return res.status(401).json({error: 'User not authenticated'});
+        if (!userAuth0Id) {
+            return res.status(401).json({ error: 'User not authenticated' });
         }
 
         // Exchange the public token for a permanent access token and itemId
@@ -98,13 +95,13 @@ export const exchangePublicToken: RequestHandler = async (req, res) => {
         });
 
         // I have to store these securely.
-        const {access_token, item_id} = response.data;
+        const { access_token, item_id } = response.data;
 
         // --- ATOMIC TRANSACTION ---
-        await prisma.$transaction(async(tx)=> {
+        await prisma.$transaction(async (tx) => {
             // Step 1. Create a new PlaidItem record to store the secure tokens
             const newPlaidItem = await tx.plaidItem.create({
-                data:{
+                data: {
                     plaidItemId: item_id,
                     accessToken: access_token,
                     userId: userAuth0Id
@@ -112,17 +109,17 @@ export const exchangePublicToken: RequestHandler = async (req, res) => {
             })
 
             // Step 2. Fetch the accounts associated with this Plaid item.
-            const accountsResponse = await plaidClient.accountsGet({access_token});
+            const accountsResponse = await plaidClient.accountsGet({ access_token });
             const accounts = accountsResponse.data.accounts;
 
             // Step 3. Loop through the accounts and create them in your database
 
-            for(const account of accounts){
+            for (const account of accounts) {
                 // the function 'upsert' handles cases where the account might already exists
                 const createdAccount = await tx.account.upsert({
-                    where: {plaidAccountId: account.account_id},
-                    update: {balance: account.balances.current ?? 0, lastSynced: new Date()},
-                    create:{
+                    where: { plaidAccountId: account.account_id },
+                    update: { balance: account.balances.current ?? 0, lastSynced: new Date() },
+                    create: {
                         plaidAccountId: account.account_id,
                         name: account.name,
                         officialName: account.official_name,
@@ -146,10 +143,10 @@ export const exchangePublicToken: RequestHandler = async (req, res) => {
                 });
 
                 const transactions: PlaidTransaction[] = transactionResponse.data.transactions;
-                for(const transaction of transactions){
+                for (const transaction of transactions) {
                     await tx.transaction.upsert({
-                        where: {plaidTransactionId: transaction.transaction_id},
-                        update:{amount: transaction.amount, status: mapPlaidTransactionStatus((transaction as any).status!)!},
+                        where: { plaidTransactionId: transaction.transaction_id },
+                        update: { amount: transaction.amount, status: mapPlaidTransactionStatus((transaction as any).status!)! },
                         create: {
                             plaidTransactionId: transaction.transaction_id,
                             amount: transaction.amount,
@@ -168,7 +165,7 @@ export const exchangePublicToken: RequestHandler = async (req, res) => {
 
         });
 
-        return res.json({message: 'Plaid public token exchanged successfully.'});
+        return res.json({ message: 'Plaid public token exchanged successfully.' });
     } catch (error) {
         console.error('Error fetching account by user ID:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -180,35 +177,35 @@ export const exchangePublicToken: RequestHandler = async (req, res) => {
  * @desc Fetches and syncs the latest transactions for a user from their Plaid accounts.
  * The access token is securely retrieved from the database.
  */
-export const getPlaidTransactions: RequestHandler = async(req, res) =>{
+export const getPlaidTransactions: RequestHandler = async (req, res) => {
     try {
 
         const userAuth0Id = req.auth?.payload.sub;
-        if(!userAuth0Id){
-            return res.status(401).json({error: 'User not authenticated'});
+        if (!userAuth0Id) {
+            return res.status(401).json({ error: 'User not authenticated' });
         }
 
         const plaidItem = await prisma.plaidItem.findFirst({
-            where: {userId: userAuth0Id},
-            include: {accounts: true}
+            where: { userId: userAuth0Id },
+            include: { accounts: true }
         });
 
-        if(!plaidItem){
-            return res.status(404).json({message: 'Plaid connection not found for user.'})
+        if (!plaidItem) {
+            return res.status(404).json({ message: 'Plaid connection not found for user.' })
         }
 
-        const {accessToken} = plaidItem;
-        
+        const { accessToken } = plaidItem;
+
         const transactionsResponse = await plaidClient.transactionsGet({
-                    access_token: accessToken,
-                    //TODO: replace these with parameters
-                    start_date: '2024-01-01',
-                    end_date: '2025-01-01',
+            access_token: accessToken,
+            //TODO: replace these with parameters
+            start_date: '2024-01-01',
+            end_date: '2025-01-01',
         });
         const transactions: PlaidTransaction[] = transactionsResponse.data.transactions;
         //create or update plaid transactions at this point
         await prisma.$transaction(async (tx) => {
-            for(const transaction of transactions) {
+            for (const transaction of transactions) {
                 const account = plaidItem.accounts.find(a => a.plaidAccountId === transaction.account_id);
                 if (!account) continue; // Skip if no matching local account found
 
@@ -236,8 +233,8 @@ export const getPlaidTransactions: RequestHandler = async(req, res) =>{
         });
 
         const localTransactions = await prisma.transaction.findMany({
-            where: {userId: userAuth0Id},
-            orderBy: {date: 'desc'}
+            where: { userId: userAuth0Id },
+            orderBy: { date: 'desc' }
         })
 
         return res.json(localTransactions);
