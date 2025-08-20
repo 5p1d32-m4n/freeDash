@@ -21,6 +21,13 @@ const NewUserPayloadSchema = UserSchema.pick({
     defaultCurrency: true,
   });
 
+const UpdateUserSchema = UserSchema.partial().omit({
+  id: true,
+  auth0Id: true,
+  createdAt: true,
+  updatedAt: true
+})
+
 export const syncUser: RequestHandler = async (req, res) => {
   try {
     // 1. Get the user's unique ID from the validated Auth0 token.
@@ -85,6 +92,256 @@ export const syncUser: RequestHandler = async (req, res) => {
       }
     }
 
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const getMe: RequestHandler = async (req, res) => {
+  try {
+    const auth0UserId = req.auth?.payload.sub;
+    if (!auth0UserId) {
+      return res.status(401).json({ error: 'Unauthorized: No user ID in token.' })
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { auth0Id: auth0UserId },
+      include: { preferences: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    return res.status(200).json(user);
+  } catch (error) {
+    console.error('Get user error:', error);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+};
+
+export const updateMe: RequestHandler = async (req, res) => {
+
+  try {
+    const auth0UserId = req.auth?.payload.sub;
+    if (!auth0UserId) {
+      return res.status(401).json({ error: 'Unauthorized: No user ID in token.' })
+    }
+
+    // Validate incoming request
+    const validation = UpdateUserSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: 'Invalid user input', details: validation.error.flatten() });
+    }
+
+    const updateUser = await prisma.user.update({
+      where: { auth0Id: auth0UserId },
+      data: validation.data,
+      include: { preferences: true }
+    });
+    return res.status(200).json(updateUser);
+
+  } catch (error) {
+    console.error('Update user error:', error);
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2025') {
+        return res.status(404).json({ error: 'User not found' });
+      }
+    }
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+};
+
+export const deleteMe: RequestHandler = async (req, res) => {
+  try {
+    // Step 1. get auth0 user id
+    const auth0UserId = req.auth?.payload.sub;
+    // Step 2. check if that user is authorized
+    if (!auth0UserId) {
+      return res.status(401).json({ error: 'Unauthorized: No use ID in token' })
+    }
+    // Step 3. await prisma transaction (CRUD)
+    await prisma.user.delete({
+      // Trhis has to change to a soft delete.
+      where: { auth0Id: auth0UserId }
+    })
+    // STep 4. validate operation
+    return res.status(204).send();
+  } catch (error) {
+    console.error('Delete user error:', error);
+
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2025') {
+        return res.status(404).json({ error: 'User not found' });
+      }
+    }
+
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+/** Admin functions */
+export const getAllUsers: RequestHandler = async (req, res) => {
+
+  try {
+
+    // Step 1. get auth0 user id
+    const auth0UserId = req.auth?.payload.sub;
+    // Step 2. check if that user is authorized and has permission for admin
+    if (!auth0UserId) {
+      return res.status(401).json({ error: 'Unauthorized: No use ID in token' })
+    }
+    const currentUser = await prisma.user.findUnique({
+      where: { auth0Id: auth0UserId }
+    });
+
+    //TODO: implement role and permission check with auth0.
+    if (!currentUser || currentUser.onboardingStatus !== 'complete') {
+      return res.status(403).json({ error: 'Forbidden: Admin access required.' });
+    }
+    // Step 3. await prisma transaction (CRUD)
+    const users = await prisma.user.findMany({
+      include: { preferences: true }
+    })
+    // STep 4. validate operation
+
+    res.status(200).json(users);
+  } catch (error) {
+    console.error('Get all users error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+//TODO: implemente a 'getUserByFilter' function
+export const getAllUsersByParam: RequestHandler = async (req, res) => {
+  try {
+    return res.status(500).json({ message: 'Endpoint not implemented.' })
+  } catch (error) {
+
+  }
+}
+
+export const getUserById: RequestHandler = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const auth0UserId = req.auth?.payload.sub;
+    
+    if (!auth0UserId) {
+      return res.status(401).json({ error: 'Unauthorized: No user ID in token' });
+    }
+
+    // Users can only access their own data unless they're admin
+    const currentUser = await prisma.user.findUnique({
+      where: { auth0Id: auth0UserId },
+    });
+
+    if (!currentUser) {
+      return res.status(404).json({ error: 'Current user not found' });
+    }
+
+    // Allow users to access their own data
+    if (currentUser.auth0Id !== auth0UserId && currentUser.onboardingStatus !== 'complete') {
+      return res.status(403).json({ error: 'Forbidden: Cannot access other user data' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { auth0Id: auth0UserId },
+      include: { preferences: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.status(200).json(user);
+  } catch (error) {
+    console.error('Get user by ID error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const updateUserById: RequestHandler = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const auth0UserId = req.auth?.payload.sub;
+    
+    if (!auth0UserId) {
+      return res.status(401).json({ error: 'Unauthorized: No user ID in token' });
+    }
+
+    // Only admins can update other users
+    const currentUser = await prisma.user.findUnique({
+      where: { auth0Id: auth0UserId },
+    });
+
+    if (!currentUser) {
+      return res.status(404).json({ error: 'Current user not found' });
+    }
+
+    if (currentUser.auth0Id !== auth0UserId && currentUser.onboardingStatus !== 'complete') {
+      return res.status(403).json({ error: 'Forbidden: Cannot update other user data' });
+    }
+
+    // Validate the incoming request body
+    const validation = UpdateUserSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ 
+        error: 'Invalid input for user update', 
+        details: validation.error.flatten() 
+      });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { auth0Id: auth0UserId },
+      data: validation.data,
+      include: { preferences: true },
+    });
+
+    res.status(200).json(updatedUser);
+  } catch (error) {
+    console.error('Update user by ID error:', error);
+    
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2025') {
+        return res.status(404).json({ error: 'User not found' });
+      }
+    }
+    
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const deleteUserById: RequestHandler = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const auth0UserId = req.auth?.payload.sub;
+    
+    if (!auth0UserId) {
+      return res.status(401).json({ error: 'Unauthorized: No user ID in token' });
+    }
+
+    // Only admins can delete users
+    const currentUser = await prisma.user.findUnique({
+      where: { auth0Id: auth0UserId },
+    });
+
+    if (!currentUser || currentUser.onboardingStatus !== 'complete') {
+      return res.status(403).json({ error: 'Forbidden: Admin access required' });
+    }
+
+    await prisma.user.delete({
+      where: { auth0Id: auth0UserId },
+    });
+
+    res.status(204).send();
+  } catch (error) {
+    console.error('Delete user by ID error:', error);
+    
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2025') {
+        return res.status(404).json({ error: 'User not found' });
+      }
+    }
+    
     res.status(500).json({ error: 'Internal server error' });
   }
 };
