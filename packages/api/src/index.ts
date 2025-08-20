@@ -2,6 +2,7 @@ import express, { Request, Response, Application } from 'express';
 import cors from 'cors';
 import { auth } from 'express-oauth2-jwt-bearer';
 import plaidRoutes from './routes/plaidRoutes';
+import userRoutes from "./routes/userRoutes";
 import * as dotenv from 'dotenv';
 
 dotenv.config();
@@ -23,6 +24,7 @@ app.use(express.json());
 app.use(cors({ origin: 'http://localhost:3000' }));
 
 app.use('api/plaid', plaidRoutes);
+app.use('api/users', userRoutes);
 
 // This is a public route that requires no authentication
 app.get('/', (req: Request, res: Response) => {
