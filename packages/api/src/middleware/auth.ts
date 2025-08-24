@@ -3,6 +3,7 @@ import { auth } from 'express-oauth2-jwt-bearer';
 import dotenv from 'dotenv';
 import { OnboardingStatus } from '../generated/prisma';
 import { Prisma, PrismaClient } from '@prisma/client';
+import prisma from '../libs/prisma';
 
 // Type extension for Express Request
 // This is the correct way to add the Auth0 payload to the request type
@@ -22,7 +23,6 @@ declare global {
 const AUTH0_DOMAIN = process.env.AUTH0_DOMAIN;
 const AUTH0_AUDIENCE = process.env.AUTH0_AUDIENCE;
 
-const prisma = new PrismaClient();
 
 if (!AUTH0_DOMAIN || !AUTH0_AUDIENCE) {
     console.error('Missing Auth0 configuration. Please check your .env file.');
@@ -61,35 +61,35 @@ export const checkPermissions = (requiredPermissions: string[]): RequestHandler 
 // --- 3. Fetch User from Database ---
 // This MUST be placed after jwtCheck in your middleware chain.
 export const addUserToRequest: RequestHandler = async (req, res, next) => {
-  // jwtCheck has already validated the token and attached the payload
-  const auth0Id = req.auth?.payload.sub;
+    // jwtCheck has already validated the token and attached the payload
+    const auth0Id = req.auth?.payload.sub;
 
-  if (!auth0Id) {
-    // This should theoretically never happen if jwtCheck passed, but it's good to be safe.
-    return next(); // Let subsequent middleware handle the missing user.
-  }
-
-  try {
-    // Fetch the user from your database using the auth0Id
-    const user = await prisma.user.findUnique({
-      where: { auth0Id },
-      select: { // Only select what you need for the request context
-        id: true,
-        email: true,
-        onboardingStatus: true,
-        // add other frequently accessed fields here, but avoid sensitive data
-      }
-    });
-
-    if (user) {
-      req.user = user; // Now your type definition is fulfilled!
+    if (!auth0Id) {
+        // This should theoretically never happen if jwtCheck passed, but it's good to be safe.
+        return next(); // Let subsequent middleware handle the missing user.
     }
-    // If user is not found, req.user remains undefined, which is correct for a new user who hasn't synced yet.
-    next();
-  } catch (error) {
-    console.error('Error fetching user for request:', error);
-    next(error); // Pass the error to your central error handler
-  }
+
+    try {
+        // Fetch the user from your database using the auth0Id
+        const user = await prisma.user.findUnique({
+            where: { auth0Id },
+            select: { // Only select what you need for the request context
+                id: true,
+                email: true,
+                onboardingStatus: true,
+                // add other frequently accessed fields here, but avoid sensitive data
+            }
+        });
+
+        if (user) {
+            req.user = user; // Now your type definition is fulfilled!
+        }
+        // If user is not found, req.user remains undefined, which is correct for a new user who hasn't synced yet.
+        next();
+    } catch (error) {
+        console.error('Error fetching user for request:', error);
+        next(error); // Pass the error to your central error handler
+    }
 };
 
 // --- 3. Role Checking (checkRoles) ---
