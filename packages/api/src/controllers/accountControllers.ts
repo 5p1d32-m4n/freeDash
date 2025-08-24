@@ -1,8 +1,8 @@
 import { RequestHandler } from 'express';
-import { PrismaClient } from '../generated/prisma';
+import { Prisma } from '@prisma/client';
+import prisma from '../libs/prisma';
 import { AccountSchema } from '@free-dash/shared-types';
 
-const prisma = new PrismaClient();
 
 export const createAccount: RequestHandler = async (req, res) => {
     try {
@@ -15,14 +15,14 @@ export const createAccount: RequestHandler = async (req, res) => {
         const validatedAccountData = AccountSchema.parse(req.body);
 
 
-        const account = prisma.$transaction(async (tx)=> {
-        const newAccount = await tx.account.create({
-            data: {
-                ...validatedAccountData
-            }
+        const account = prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            const newAccount = await tx.account.create({
+                data: {
+                    ...validatedAccountData
+                }
+            });
         });
-        });
-        
+
         return res.status(201).json({ message: 'Account successfully created' });
     } catch (error) {
         console.error('Error creating account:', error);

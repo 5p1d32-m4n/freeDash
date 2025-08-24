@@ -1,13 +1,13 @@
+// No direct type import from @prisma/client
+import { Configuration, PlaidApi, Products, CountryCode, Transaction as PlaidTransaction } from "plaid";
 import { RequestHandler } from "express";
-import { Configuration, PlaidApi, PlaidEnvironments, Products, CountryCode, Transaction as PlaidTransaction } from "plaid";
-import { PrismaClient, TransactionType, AccountType, TransactionStatus } from "../generated/prisma";
-import { jwtCheck, checkPermissions } from "../middleware/auth";
+import prisma from "../libs/prisma";
+import { AccountType, TransactionType, TransactionStatus } from '../../prisma/generated/client';
 
 // I need to import jwt for token checks and "checkPermissions(['write:accounts'])" - DONE
 // This is the setup for the auth middleware. You would then use `checkJwt` in your routes.
 // e.g. router.post('/link-token', checkJwt, createLinkToken);
 
-const prisma = new PrismaClient();
 const configuration = new Configuration({
     basePath: process.env.PLAID_ENV,
     baseOptions: {
@@ -24,7 +24,7 @@ const plaidClient = new PlaidApi(configuration);
 /**
  * Maps Plaid's string enums to your Prisma enums
  */
-const mapPlaidAccountType = (plaidType: string): AccountType | undefined => {
+const mapPlaidAccountType = (plaidType: string) => {
     switch (plaidType) {
         case 'checking': return AccountType.checking;
         case 'savings': return AccountType.savings;
@@ -33,22 +33,18 @@ const mapPlaidAccountType = (plaidType: string): AccountType | undefined => {
     }
 };
 
-const mapPlaidTransactionType = (plaidCategories: string[]): TransactionType => {
+const mapPlaidTransactionType = (plaidCategories: string[]) => {
     // Plaid's category system is hierarchical. You'd check for a top-level category first.
     if (plaidCategories.includes('Payroll') || plaidCategories.includes('Interest')) {
         return TransactionType.income;
     }
-    // You would add more logic here to handle other specific cases.
-    // For now, assume all others are an expense.
     return TransactionType.expense;
 };
 
-const mapPlaidTransactionStatus = (plaidStatus: string): TransactionStatus | undefined => {
-    switch (plaidStatus) {
-        case 'pending': return TransactionStatus.pending;
-        case 'posted': return TransactionStatus.posted;
-        default: return undefined;
-    }
+const mapPlaidTransactionStatus = (plaidStatus: string) => {
+    // Plaid's transaction object has a 'pending' boolean, not a 'status' string
+    // If pending is true, return 'pending', else 'posted'
+    return plaidStatus === 'pending' ? TransactionStatus.pending : TransactionStatus.posted;
 };
 
 
@@ -116,6 +112,11 @@ export const exchangePublicToken: RequestHandler = async (req, res) => {
 
             for (const account of accounts) {
                 // the function 'upsert' handles cases where the account might already exists
+                const accountType = mapPlaidAccountType(account.type);
+                if (!accountType) {
+                    console.warn(`Skipping account with unhandled type: ${account.type}`);
+                    continue; // Skip accounts we don't handle
+                }
                 const createdAccount = await tx.account.upsert({
                     where: { plaidAccountId: account.account_id },
                     update: { balance: account.balances.current ?? 0, lastSynced: new Date() },
@@ -123,7 +124,7 @@ export const exchangePublicToken: RequestHandler = async (req, res) => {
                         plaidAccountId: account.account_id,
                         name: account.name,
                         officialName: account.official_name,
-                        type: mapPlaidAccountType(account.type)!,
+                        type: accountType,
                         balance: account.balances.current ?? 0,
                         lastSynced: new Date(),
                         userId: userAuth0Id,
@@ -131,35 +132,37 @@ export const exchangePublicToken: RequestHandler = async (req, res) => {
                     }
                 });
 
-                // Step 4. Fetch and sync initial transactions for each account (inside the for loop for accounts).
+                // Step 4. Fetch and sync initial transactions for this specific account.
                 const transactionResponse = await plaidClient.transactionsGet({
                     access_token,
                     //TODO: replace these with parameters
                     start_date: '2024-01-01',
                     end_date: '2025-01-01',
                     options: {
-                        count: 500
+                        account_ids: [account.account_id],
+                        count: 100 // Fetch up to 100 transactions per account initially
                     }
                 });
 
-                const transactions: PlaidTransaction[] = transactionResponse.data.transactions;
+                const transactions = transactionResponse.data.transactions;
                 for (const transaction of transactions) {
+                    const transactionStatus = mapPlaidTransactionStatus(transaction.pending ? 'pending' : 'posted');
                     await tx.transaction.upsert({
                         where: { plaidTransactionId: transaction.transaction_id },
-                        update: { amount: transaction.amount, status: mapPlaidTransactionStatus((transaction as any).status!)! },
+                        update: { amount: transaction.amount, status: transactionStatus },
                         create: {
                             plaidTransactionId: transaction.transaction_id,
                             amount: transaction.amount,
                             currency: transaction.iso_currency_code!,
                             date: new Date(transaction.date),
                             merchant: transaction.merchant_name,
-                            plaidCategory: transaction.category as any,
-                            status: mapPlaidTransactionStatus((transaction as any).status!)!,
-                            type: mapPlaidTransactionType(transaction.category!), // Set a default or map to Plaid's type
+                            plaidCategory: transaction.category?.join(', '),
+                            status: transactionStatus,
+                            type: mapPlaidTransactionType(transaction.category || []),
                             userId: userAuth0Id,
                             accountId: createdAccount.id
                         }
-                    })
+                    });
                 }
             }
 
@@ -202,18 +205,19 @@ export const getPlaidTransactions: RequestHandler = async (req, res) => {
             start_date: '2024-01-01',
             end_date: '2025-01-01',
         });
-        const transactions: PlaidTransaction[] = transactionsResponse.data.transactions;
+        const transactions = transactionsResponse.data.transactions;
         //create or update plaid transactions at this point
         await prisma.$transaction(async (tx) => {
             for (const transaction of transactions) {
-                const account = plaidItem.accounts.find(a => a.plaidAccountId === transaction.account_id);
+                const account = plaidItem.accounts.find((a: { plaidAccountId: string }) => a.plaidAccountId === transaction.account_id);
                 if (!account) continue; // Skip if no matching local account found
 
+                const transactionStatus = mapPlaidTransactionStatus(transaction.pending ? 'pending' : 'posted');
                 await tx.transaction.upsert({
                     where: { plaidTransactionId: transaction.transaction_id },
                     update: {
                         amount: transaction.amount,
-                        status: mapPlaidTransactionStatus((transaction as any).status!)!,
+                        status: transactionStatus,
                         date: new Date(transaction.date)
                     },
                     create: {
@@ -222,9 +226,9 @@ export const getPlaidTransactions: RequestHandler = async (req, res) => {
                         currency: transaction.iso_currency_code!,
                         date: new Date(transaction.date),
                         merchant: transaction.merchant_name ?? null,
-                        plaidCategory: transaction.category as any,
-                        status: mapPlaidTransactionStatus((transaction as any).status!)!,
-                        type: mapPlaidTransactionType(transaction.category!),
+                        plaidCategory: transaction.category?.join(', '),
+                        status: transactionStatus,
+                        type: mapPlaidTransactionType(transaction.category || []),
                         userId: userAuth0Id,
                         accountId: account.id
                     }

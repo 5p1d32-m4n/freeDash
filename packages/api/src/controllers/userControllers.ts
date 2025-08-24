@@ -1,5 +1,6 @@
 import { RequestHandler } from 'express';
-import { PrismaClient, Prisma } from '../generated/prisma';
+import { PrismaClient } from "../../prisma/generated/client";
+import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { UserSchema } from '@free-dash/shared-types';
 import { z } from 'zod';
 
@@ -83,10 +84,9 @@ export const syncUser: RequestHandler = async (req, res) => {
     console.error('User sync error:', error);
 
     // Handle potential Prisma unique constraint violation for email
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      // The .code property can be accessed in a type-safe manner
-      if (error.code === 'P2002') {
-        if ((error.meta?.target as string[])?.includes('email')) {
+    if (error instanceof PrismaClientKnownRequestError) {
+      if ((error as any).code === 'P2002') {
+        if ((error as any).meta?.target?.includes('email')) {
           return res.status(409).json({ error: 'A user with this email already exists.' });
         }
       }
@@ -142,8 +142,8 @@ export const updateMe: RequestHandler = async (req, res) => {
 
   } catch (error) {
     console.error('Update user error:', error);
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === 'P2025') {
+    if (error instanceof PrismaClientKnownRequestError) {
+      if ((error as any).code === 'P2025') {
         return res.status(404).json({ error: 'User not found' });
       }
     }
@@ -169,7 +169,7 @@ export const deleteMe: RequestHandler = async (req, res) => {
   } catch (error) {
     console.error('Delete user error:', error);
 
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error instanceof PrismaClientKnownRequestError) {
       if (error.code === 'P2025') {
         return res.status(404).json({ error: 'User not found' });
       }
@@ -214,9 +214,9 @@ export const getAllUsers: RequestHandler = async (req, res) => {
 //TODO: implemente a 'getUserByFilter' function
 export const getAllUsersByParam: RequestHandler = async (req, res) => {
   try {
-    return res.status(500).json({ message: 'Endpoint not implemented.' })
+    return res.status(501).json({ message: 'Endpoint not implemented.' });
   } catch (error) {
-
+    res.status(500).json({ error: 'Internal server error' });
   }
 }
 
@@ -224,7 +224,7 @@ export const getUserById: RequestHandler = async (req, res) => {
   try {
     const { id } = req.params;
     const auth0UserId = req.auth?.payload.sub;
-    
+
     if (!auth0UserId) {
       return res.status(401).json({ error: 'Unauthorized: No user ID in token' });
     }
@@ -238,13 +238,13 @@ export const getUserById: RequestHandler = async (req, res) => {
       return res.status(404).json({ error: 'Current user not found' });
     }
 
-    // Allow users to access their own data
-    if (currentUser.auth0Id !== auth0UserId && currentUser.onboardingStatus !== 'complete') {
+    // A regular user can only access their own data. An admin can access anyone's.
+    if (currentUser.id !== id && currentUser.onboardingStatus !== 'complete') { // 'complete' is a placeholder for a real role/permission check
       return res.status(403).json({ error: 'Forbidden: Cannot access other user data' });
     }
 
     const user = await prisma.user.findUnique({
-      where: { auth0Id: auth0UserId },
+      where: { id: id },
       include: { preferences: true },
     });
 
@@ -263,7 +263,7 @@ export const updateUserById: RequestHandler = async (req, res) => {
   try {
     const { id } = req.params;
     const auth0UserId = req.auth?.payload.sub;
-    
+
     if (!auth0UserId) {
       return res.status(401).json({ error: 'Unauthorized: No user ID in token' });
     }
@@ -277,21 +277,22 @@ export const updateUserById: RequestHandler = async (req, res) => {
       return res.status(404).json({ error: 'Current user not found' });
     }
 
-    if (currentUser.auth0Id !== auth0UserId && currentUser.onboardingStatus !== 'complete') {
+    // Only an admin can update another user's data.
+    if (currentUser.id !== id && currentUser.onboardingStatus !== 'complete') { // 'complete' is a placeholder for a real role/permission check
       return res.status(403).json({ error: 'Forbidden: Cannot update other user data' });
     }
 
     // Validate the incoming request body
     const validation = UpdateUserSchema.safeParse(req.body);
     if (!validation.success) {
-      return res.status(400).json({ 
-        error: 'Invalid input for user update', 
-        details: validation.error.flatten() 
+      return res.status(400).json({
+        error: 'Invalid input for user update',
+        details: validation.error.flatten()
       });
     }
 
     const updatedUser = await prisma.user.update({
-      where: { auth0Id: auth0UserId },
+      where: { id: id },
       data: validation.data,
       include: { preferences: true },
     });
@@ -299,13 +300,13 @@ export const updateUserById: RequestHandler = async (req, res) => {
     res.status(200).json(updatedUser);
   } catch (error) {
     console.error('Update user by ID error:', error);
-    
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+
+    if (error instanceof PrismaClientKnownRequestError) {
       if (error.code === 'P2025') {
         return res.status(404).json({ error: 'User not found' });
       }
     }
-    
+
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -314,7 +315,7 @@ export const deleteUserById: RequestHandler = async (req, res) => {
   try {
     const { id } = req.params;
     const auth0UserId = req.auth?.payload.sub;
-    
+
     if (!auth0UserId) {
       return res.status(401).json({ error: 'Unauthorized: No user ID in token' });
     }
@@ -329,19 +330,19 @@ export const deleteUserById: RequestHandler = async (req, res) => {
     }
 
     await prisma.user.delete({
-      where: { auth0Id: auth0UserId },
+      where: { id: id },
     });
 
     res.status(204).send();
   } catch (error) {
     console.error('Delete user by ID error:', error);
-    
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+
+    if (error instanceof PrismaClientKnownRequestError) {
       if (error.code === 'P2025') {
         return res.status(404).json({ error: 'User not found' });
       }
     }
-    
+
     res.status(500).json({ error: 'Internal server error' });
   }
 };
