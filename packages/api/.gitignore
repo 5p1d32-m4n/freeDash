@@ -1,7 +1,5 @@
 node_modules
 /prisma/prisma/schema.prisma
-
-/prisma/prisma/schema.prisma
-
+/prisma/generated/*
 /src/generated/prisma
 dist
