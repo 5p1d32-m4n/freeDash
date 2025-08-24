@@ -6,7 +6,7 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
+  output   = "./generated/client"
 }
 
 datasource db {
@@ -54,7 +54,7 @@ model User {
   preferences  UserPreferences? // A one-to-one relationship
   accounts     Account[]
   transactions Transaction[]
-  plaidItems PlaidItem[]
+  plaidItems   PlaidItem[]
 }
 
 model UserPreferences {
@@ -94,7 +94,7 @@ model Account {
 
 model Transaction {
   id                 String            @id @default(uuid())
-  plaidTransactionId String @unique// The ID for this specific transaction from Plaid
+  plaidTransactionId String            @unique // The ID for this specific transaction from Plaid
   amount             Float
   currency           String
   date               DateTime
@@ -115,12 +115,11 @@ model Transaction {
 }
 
 model PlaidItem {
-  id String @id @default(uuid()) 
-  plaidItemId String  @unique // Unique Id for plaid - bank connection
-  accessToken String @unique // The secure, permanent token to make API calls to Plaid
-  user User @relation(fields: [userId], references: [id])
-  userId String
-  createdAt DateTime @default(now()) // Optional store date tiem.
-  accounts Account[]
-
+  id          String    @id @default(uuid())
+  plaidItemId String    @unique // Unique Id for plaid - bank connection
+  accessToken String    @unique // The secure, permanent token to make API calls to Plaid
+  user        User      @relation(fields: [userId], references: [id])
+  userId      String
+  createdAt   DateTime  @default(now()) // Optional store date tiem.
+  accounts    Account[]
 }
