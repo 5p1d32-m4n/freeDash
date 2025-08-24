@@ -2,6 +2,7 @@ import { RequestHandler } from 'express';
 import { PrismaClient } from "../../prisma/generated/client";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { UserSchema } from '@free-dash/shared-types';
+import { checkPermissions } from '../middleware/auth';
 import { z } from 'zod';
 
 const prisma = new PrismaClient();
