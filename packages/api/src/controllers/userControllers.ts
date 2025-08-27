@@ -99,6 +99,7 @@ export const syncUser: RequestHandler = async (req, res) => {
 
 export const getMe: RequestHandler = async (req, res) => {
   try {
+    console.log('Getting me...')
     const auth0UserId = req.auth?.payload.sub;
     if (!auth0UserId) {
       return res.status(401).json({ error: 'Unauthorized: No user ID in token.' })
